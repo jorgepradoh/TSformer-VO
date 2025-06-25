@@ -8,13 +8,14 @@ import torch.nn as nn
 import os
 import numpy as np
 from tqdm import tqdm
+import torch_directml
 
+checkpoint_path = ""
+checkpoint_name = "checkpoint_model3_exp20"
+sequences = ["00", "02", "08", "09"]
 
-checkpoint_path = "checkpoints/Exp3"
-checkpoint_name = "checkpoint_e90"
-sequences = ["01", "03", "04", "05", "06", "07", "10"]
-
-device = "cuda" if torch.cuda.is_available() else "cpu"
+#device = "cuda" if torch.cuda.is_available() else "cpu"
+device = torch_directml.device()
 
 # read hyperparameters and configuration
 with open(os.path.join(checkpoint_path, "args.pkl"), 'rb') as f:
@@ -49,11 +50,16 @@ model = VisionTransformer(img_size=model_params["image_size"],
                           num_frames=model_params["num_frames"],
                           attention_type=model_params["attention_type"])
 
+model.to(device)
+
 checkpoint = torch.load(os.path.join(args["checkpoint_path"], "{}.pth".format(checkpoint_name)),
-                        map_location=torch.device(device))
-model.load_state_dict(checkpoint['model_state_dict'])
-if torch.cuda.is_available():
-    model.cuda()
+                        map_location='cpu')
+state_dict = (checkpoint['model_state_dict'])
+for key in state_dict:
+    state_dict[key] = state_dict[key].to(device)
+#if torch.cuda.is_available():
+#    model.cuda()
+model.load_state_dict(state_dict)
 
 
 for sequence in sequences:
@@ -69,16 +75,17 @@ for sequence in sequences:
       pred_poses = torch.zeros((1, args["window_size"] - 1, 6), device=device)
       batchs.set_description(f"Sequence {sequence}")
       for images, gt in batchs:
-        if torch.cuda.is_available():
-          images, gt = images.cuda(), gt.cuda()
-
+      #  if torch.cuda.is_available():
+       #   images, gt = images.cuda(), gt.cuda()
+          images, gt = images.to(device), gt.to(device)
+          
           with torch.no_grad():
             model.eval()
             model.training = False
 
             # predict pose
             pred_pose = model(images.float())
-            pred_pose = torch.reshape(pred_pose, (args["window_size"] - 1, 6)).to(device)
+            pred_pose = torch.reshape(pred_pose, (args["window_size"] - 1, 6))
             pred_pose = pred_pose.unsqueeze(dim=0)
             pred_poses = torch.concat((pred_poses, pred_pose), dim=0)
     

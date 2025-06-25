@@ -1,5 +1,6 @@
 import os
 import torch
+import torch_directml
 import torch.optim as optim
 from tqdm import tqdm
 from datasets.kitti import KITTI
@@ -11,8 +12,8 @@ import pickle
 import json
 
 
-torch.manual_seed(2023)
-
+torch.manual_seed(2025)
+device = torch_directml.device()
 
 def val_epoch(model, val_loader, criterion, args):
     epoch_loss = 0
@@ -20,9 +21,10 @@ def val_epoch(model, val_loader, criterion, args):
         for images, gt in tepoch:
             tepoch.set_description(f"Validating ")
             # for batch_idx, (images, odom) in enumerate(train_loader):
-            if torch.cuda.is_available():
+            """ if torch.cuda.is_available():
                 images, gt = images.cuda(), gt.cuda()
-
+            """
+            images, gt = images.to(device), gt.to(device)
             # predict pose
             estimated_pose = model(images.float())
 
@@ -43,9 +45,9 @@ def train_epoch(model, train_loader, criterion, optimizer, epoch, tensorboard_wr
         for images, gt in tepoch:
             tepoch.set_description(f"Epoch {epoch}")
             # for batch_idx, (images, odom) in enumerate(train_loader):
-            if torch.cuda.is_available():
-                images, gt = images.cuda(), gt.cuda()
-
+            """if torch.cuda.is_available():
+                images, gt = images.cuda(), gt.cuda()"""
+            images, gt = images.to(device), gt.to(device)
             # predict pose
             estimated_pose = model(images.float())
 
@@ -130,7 +132,7 @@ def get_optimizer(params, args):
 
     # load checkpoint
     if args["checkpoint"] is not None:
-        checkpoint = torch.load(os.path.join(args["checkpoint_path"], args["checkpoint"]))
+        checkpoint = torch.load(os.path.join(args["checkpoint_path"], args["checkpoint"]), map_location=device)
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
     return optimizer
@@ -173,7 +175,7 @@ if __name__ == "__main__":
         "epoch": 100,  # train iters each timestep
     	"weighted_loss": None,  # float to weight angles in loss function
       	"pretrained_ViT": False,  # load weights from pre-trained ViT
-        "checkpoint_path": "checkpoints/Exp4",  # path to save checkpoint
+        "checkpoint_path": "",  # path to save checkpoint
         "checkpoint": None,  # checkpoint
     }
 
@@ -197,8 +199,8 @@ if __name__ == "__main__":
     args["model_params"] = model_params
 
     # create checkpoints folder
-    if not os.path.exists(args["checkpoint_path"]):
-        os.makedirs(args["checkpoint_path"])
+   # if not os.path.exists(args["checkpoint_path"]):
+   #     os.makedirs(args["checkpoint_path"])
 
     with open(os.path.join(args["checkpoint_path"], 'args.pkl'), 'wb') as f:
         pickle.dump(args, f)
@@ -211,14 +213,25 @@ if __name__ == "__main__":
     # preprocessing operation
     preprocess = transforms.Compose([
         transforms.Resize((model_params["image_size"])),
+        
+        # randomly applied data augmentation
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.05),
+        transforms.RandomApply([transforms.GaussianBlur(kernel_size=5)], p=0.3),
+        transforms.RandomApply([transforms.RandomAffine(degrees=3, translate=(0.05, 0.05))], p=0.3),
+
+
         transforms.ToTensor(),
         transforms.Normalize(
+            #mean = [GET S3LI & MADMAX VALUES]
+            #std = [GET S3LI & MADMAX VALUES]
             mean=[0.34721234, 0.36705238, 0.36066107],
             std=[0.30737526, 0.31515116, 0.32020183]),
     ])
 
     # train and val dataloader
-    print("Using CUDA: ", torch.cuda.is_available())
+    #print("Using CUDA: ", torch.cuda.is_available())
+    #device = torch_directml.device()
+    print("Using device: ", device)
     print("Loading data...")
     dataset = KITTI(window_size=args["window_size"], overlap=args["overlap"], transform=preprocess)
     nb_val = round(args["val_split"] * len(dataset))
@@ -237,7 +250,7 @@ if __name__ == "__main__":
     # build and load model
     print("Building model...")
     model, args = build_model(args, model_params)
-
+    model.to(device=device)
     # loss and optimizer
     criterion = torch.nn.MSELoss()
     optimizer = get_optimizer(model.parameters(), args)

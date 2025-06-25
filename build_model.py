@@ -1,11 +1,14 @@
 import torch
 import numpy as np
 import os
+import torch_directml
 import torch.nn as nn
 from timesformer.models.vit import VisionTransformer
 from functools import partial
 from einops import rearrange, reduce, repeat
 from timesformer.models.helpers import load_pretrained
+
+device = torch_directml.device()
 
 
 default_cfgs = {
@@ -80,7 +83,7 @@ def build_model(args, model_params):
     args["epoch_init"] = 1
     args["best_val"] = np.inf
     if args["checkpoint"] is not None:
-        checkpoint = torch.load(os.path.join(args["checkpoint_path"], args["checkpoint"]))
+        checkpoint = torch.load(os.path.join(args["checkpoint_path"], args["checkpoint"]), map_location=device)
         args["epoch_init"] = checkpoint["epoch"] + 1
         args["best_val"] = checkpoint["best_val"]
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -102,8 +105,6 @@ def build_model(args, model_params):
                         pretrained_model="")
 
 
-    if torch.cuda.is_available():
-        model.cuda()
     
     return model, args
 
