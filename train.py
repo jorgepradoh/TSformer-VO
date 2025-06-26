@@ -10,6 +10,8 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import random_split
 import pickle
 import json
+from scripts.poseLossFunction import PoseLoss
+from scripts.logger import LossLogger
 
 
 torch.manual_seed(2025)
@@ -111,6 +113,11 @@ def train(model, train_loader, val_loader, criterion, optimizer, tensorboard_wri
 
         # log loss in TensorBoard
         tensorboard_writer.add_scalar("train_loss", train_loss, epoch)
+        sigma_t = torch.exp(criterion.log_sigma_t).item()
+        sigma_r = torch.exp(criterion.log_sigma_r).item()
+        print("σ_t:", sigma_t, "σ_r:", sigma_r)
+        loss_logger.log(epoch, sigma_t, sigma_r)
+        
     return
 
 
@@ -139,7 +146,11 @@ def get_optimizer(params, args):
 
 
 def compute_loss(y_hat, y, criterion, args):
-    if args["weighted_loss"] == None:
+    loss = criterion(y_hat, y.float())
+    return loss
+
+"""    
+if args["weighted_loss"] == None:
         loss = criterion(y_hat, y.float())
     else:
         y = torch.reshape(y, (y.shape[0], args["window_size"]-1, 6))
@@ -155,8 +166,8 @@ def compute_loss(y_hat, y, criterion, args):
         k = args["weighted_loss"]
         loss_angles = k * criterion(estimated_angles, gt_angles.float())
         loss_translation = criterion(estimated_translation, gt_translation.float())
-        loss =  loss_angles + loss_translation   
-    return loss
+        loss =  loss_angles + loss_translation
+"""
 
 
 if __name__ == "__main__":
@@ -252,7 +263,8 @@ if __name__ == "__main__":
     model, args = build_model(args, model_params)
     model.to(device=device)
     # loss and optimizer
-    criterion = torch.nn.MSELoss()
+    criterion = PoseLoss()
+    loss_logger = LossLogger()
     optimizer = get_optimizer(model.parameters(), args)
 
     # train network
