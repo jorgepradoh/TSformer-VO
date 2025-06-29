@@ -20,10 +20,10 @@ class KITTI(torch.utils.data.Dataset):
     """
 
     def __init__(self,
-                 data_path=r"data/sequences_jpg",
-                 gt_path=r"data/poses",
-                 camera_id="2",
-                 sequences=["00", "02", "08", "09"],
+                 data_path=r"D:\datasets\sequences_jpg",
+                 gt_path=r"C:\Users\Jorge\Documents\gh-repos\TSformer-VO\data\poses",
+                 camera_id="0",
+                 sequences= ["00", "02", "08", "09"],
                  window_size=3,
                  overlap=1,
                  read_poses=True,
@@ -170,6 +170,7 @@ class KITTI(torch.utils.data.Dataset):
         return gt
 
     def create_windowed_dataframe(self, df):
+        df=pd.DataFrame(df)
         window_size = self.window_size
         overlap = self.overlap
         windowed_df = pd.DataFrame()
@@ -184,7 +185,7 @@ class KITTI(torch.utils.data.Dataset):
                 row_idx = row_idx + window_size - overlap
                 w_idx = w_idx + 1
                 windowed_df = pd.concat([windowed_df, rows], ignore_index=True)
-        windowed_df.reset_index(drop=True)
+        #windowed_df.reset_index(drop=True)  # seems to do nothing 
         return windowed_df
 
 
