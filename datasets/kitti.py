@@ -20,10 +20,12 @@ class KITTI(torch.utils.data.Dataset):
     """
 
     def __init__(self,
-                 data_path=r"D:\datasets\sequences_jpg",
-                 gt_path=r"C:\Users\Jorge\Documents\gh-repos\TSformer-VO\data\poses",
+                 data_path=r"E:\datasets\madmax_structured\images",
+                 gt_path=r"E:\datasets\madmax_structured\poses",
                  camera_id="0",
-                 sequences= ["00", "02", "08", "09"],
+                 sequences=None,
+                sequence_list_file=None,
+                 #sequences= ['09', '12', '05', '27', '32', '19', '30', '25', '22', '26', '31', '10', '11', '28', '08', '20', '16', '35', '06', '24', '00', '34', '13', '18'],
                  window_size=3,
                  overlap=1,
                  read_poses=True,
@@ -49,6 +51,15 @@ class KITTI(torch.utils.data.Dataset):
         # define sequence for training, test and val
         self.sequences = sequences
 
+        if sequence_list_file is not None:
+            with open(sequence_list_file, 'r') as f:
+                self.sequences = [line.strip() for line in f.readlines()]
+        elif sequences is not None:
+            self.sequences = sequences
+        else:
+            raise ValueError("Either `sequences` list or `sequence_list_file` path must be provided.")
+
+
         # read frames list and ground truths
         frames, seqs = self.read_frames()
         gt = self.read_gt()
@@ -56,6 +67,10 @@ class KITTI(torch.utils.data.Dataset):
         # create dataframe with frames and ground truths
         data = pd.DataFrame({"gt": gt})
         data = data["gt"].apply(pd.Series)
+        
+        print(f"Number of frames: {len(frames)}")
+        print(f"Number of ground truth entries: {len(gt)}")
+        
         data["frames"] = frames
         data["sequence"] = seqs
         self.data = data
@@ -149,6 +164,10 @@ class KITTI(torch.utils.data.Dataset):
             frames = frames + frames_seq
             seqs = seqs + [sequence] * len(frames_seq)
         return frames, seqs
+    def read_gt(self)_
+
+"""
+KITTI 
 
     def read_gt(self):
         # Read ground truth
@@ -168,6 +187,7 @@ class KITTI(torch.utils.data.Dataset):
             gt = None
 
         return gt
+"""
 
     def create_windowed_dataframe(self, df):
         df=pd.DataFrame(df)

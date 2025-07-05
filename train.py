@@ -14,7 +14,7 @@ from scripts.poseLossFunction import PoseLoss
 from scripts.logger import LossLogger
 
 
-torch.manual_seed(2025)
+torch.manual_seed(42)
 device = torch_directml.device()
 
 def val_epoch(model, val_loader, criterion, args):
@@ -120,9 +120,11 @@ def train(model, train_loader, val_loader, criterion, optimizer, tensorboard_wri
         
     return
 
-
+"""
 def get_optimizer(params, args):
     method = args["optimizer"]
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
+    return optimizer
 
     # initialize the optimizer
     if method == "Adam":
@@ -141,15 +143,19 @@ def get_optimizer(params, args):
     if args["checkpoint"] is not None:
         checkpoint = torch.load(os.path.join(args["checkpoint_path"], args["checkpoint"]), map_location=device)
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+"""
 
-    return optimizer
+    
 
 
 def compute_loss(y_hat, y, criterion, args):
     loss = criterion(y_hat, y.float())
     return loss
 
-"""    
+"""
+AdamW decouples weight decay from the gradient update, fixing Adam’s L2-regularization behavior.
+It’s now the default optimizer for Transformers (including ViTs) and performs significantly better than vanilla Adam on most vision and regression tasks.
+
 if args["weighted_loss"] == None:
         loss = criterion(y_hat, y.float())
     else:
@@ -179,15 +185,17 @@ if __name__ == "__main__":
         "val_split": 0.1,  # percentage to use as validation data
         "window_size": 2,  # number of frames in window
         "overlap": 1,  # number of frames overlapped between windows
-        "optimizer": "Adam",  # optimizer [Adam, SGD, Adagrad, RAdam]
-        "lr": 1e-5,  # learning rate
+#        "optimizer": "AdamW",  # optimizer [Adam, SGD, Adagrad, RAdam]
+#        "lr": 1e-5,  # learning rate
         "momentum": 0.9,  # SGD momentum
-        "weight_decay": 1e-4,  # SGD momentum
+#        "weight_decay": 1e-4,  # SGD momentum
         "epoch": 100,  # train iters each timestep
     	"weighted_loss": None,  # float to weight angles in loss function
       	"pretrained_ViT": False,  # load weights from pre-trained ViT
-        "checkpoint_path": "",  # path to save checkpoint
+        "checkpoint_path": "./checkpoints",  # path to save checkpoint
         "checkpoint": None,  # checkpoint
+        "train_split_file": "datasets/train_sequences.txt",
+        "val_split_file": "datasets/val_sequences.txt",
     }
 
     # tiny  - patch_size=16, embed_dim=192, depth=12, num_heads=3
@@ -244,11 +252,22 @@ if __name__ == "__main__":
     #device = torch_directml.device()
     print("Using device: ", device)
     print("Loading data...")
-    dataset = KITTI(window_size=args["window_size"], overlap=args["overlap"], transform=preprocess)
-    nb_val = round(args["val_split"] * len(dataset))
+    # Load train dataset
+    train_data = KITTI(
+        window_size=args["window_size"],
+        overlap=args["overlap"],
+        transform=preprocess,
+        sequence_list_file=args["train_split_file"]
+    )
 
-    train_data, val_data = random_split(dataset, [len(dataset) - nb_val, nb_val]) #generator=torch.Generator().manual_seed(2))
-    
+    # Load val dataset
+    val_data = KITTI(
+        window_size=args["window_size"],
+        overlap=args["overlap"],
+        transform=preprocess,
+        sequence_list_file=args["val_split_file"]
+    )
+  
     train_loader = torch.utils.data.DataLoader(train_data,
                                                batch_size=args["bsize"],
                                                shuffle=True,
@@ -258,6 +277,10 @@ if __name__ == "__main__":
                                              shuffle=False,
                                              )
 
+    # number of samples in each set
+    print(f"Train set size: {len(train_data)} samples")
+    print(f"Validation set size: {len(val_data)} samples")
+
     # build and load model
     print("Building model...")
     model, args = build_model(args, model_params)
@@ -265,7 +288,8 @@ if __name__ == "__main__":
     # loss and optimizer
     criterion = PoseLoss()
     loss_logger = LossLogger()
-    optimizer = get_optimizer(model.parameters(), args)
+    #optimizer = get_optimizer(model.parameters(), args)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
 
     # train network
     print(20*"--" +  " Training " + 20*"--")
