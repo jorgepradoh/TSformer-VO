@@ -1,4 +1,5 @@
 import os
+import time
 import torch
 import torch_directml
 import torch.optim as optim
@@ -202,14 +203,14 @@ if __name__ == "__main__":
     # small - patch_size=16, embed_dim=384, depth=12, num_heads=6
     # base  - patch_size=16, embed_dim=768, depth=12, num_heads=12
     model_params = {
-        "dim": 384,
+        "dim": 192,
         "image_size": (192, 640),  #(192, 640),
         "patch_size": 16,
-        "attention_type": 'divided_space_time',  # ['divided_space_time', 'space_only','joint_space_time', 'time_only']
+        "attention_type": 'space_only',  # ['divided_space_time', 'space_only','joint_space_time', 'time_only']
         "num_frames": args["window_size"],
         "num_classes": 6 * (args["window_size"] - 1),  # 6 DoF for each frame
         "depth": 12,
-        "heads": 6,
+        "heads": 3,
         "dim_head": 64,
         "attn_dropout": 0.1,
         "ff_dropout": 0.1,
@@ -239,7 +240,7 @@ if __name__ == "__main__":
         transforms.RandomApply([transforms.RandomAffine(degrees=3, translate=(0.05, 0.05))], p=0.3),
 
 
-        transforms.ToTensor(),
+        #transforms.ToTensor(),
         transforms.Normalize(
             #mean = [GET S3LI & MADMAX VALUES]
             #std = [GET S3LI & MADMAX VALUES]
@@ -268,15 +269,20 @@ if __name__ == "__main__":
         sequence_list_file=args["val_split_file"]
     )
   
+    #start = time.time()
+  
     train_loader = torch.utils.data.DataLoader(train_data,
                                                batch_size=args["bsize"],
                                                shuffle=True,
+                                               num_workers = 10
                                                )
     val_loader = torch.utils.data.DataLoader(val_data,
                                              batch_size=1,
                                              shuffle=False,
+                                             num_workers = 10
                                              )
 
+   # print(f"Dataloaders created in {(time.time()-start):.2f} sec")
     # number of samples in each set
     print(f"Train set size: {len(train_data)} samples")
     print(f"Validation set size: {len(val_data)} samples")

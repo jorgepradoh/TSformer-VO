@@ -7,6 +7,8 @@ from datasets.utils import rotation_to_euler
 import torch
 import matplotlib.pyplot as plt
 from torchvision import transforms
+import torchvision.io as io
+from pathlib import Path
 
 
 class KITTI(torch.utils.data.Dataset):
@@ -92,18 +94,61 @@ class KITTI(torch.utils.data.Dataset):
         # Read frames as grayscale
         frames = data["frames"].values
         imgs = []
+        # attempt at alternative using torchvision io instead of PIL
+        for fname in frames:
+            img = io.read_image(fname).float() / 255.0 #scales to 0-1
+            if self.transform:
+                img = self.transform(img)
+            imgs.append(img)
+        
+        #stack to T C H W
+        imgs = torch.stack(imgs, dim=0)
+        #permute to C T H W
+        imgs = imgs.permute(1, 0, 2, 3)
+            
+        """        
         for fname in frames:
             img = Image.open(fname).convert('RGB')
             # pre processing
             img = self.transform(img)
             img = img.unsqueeze(0)
             imgs.append(img)
-        imgs = np.concatenate(imgs, axis=0)
-        imgs = np.asarray(imgs)
+        imgs = torch.stack(imgs, dim=1)  # shape C T H W
+        #imgs = np.asarray(imgs)
         # T C H W -> C T H W.
-        imgs = imgs.transpose(1, 0, 2, 3)
-
+        #imgs = imgs.transpose(1, 0, 2, 3)
+        imgs = imgs.permute(1, 0, 2, 3)
+        """
         # Read ground truth [window_size-1 x 6]
+        #oh boy attempting to remove numpy 
+        
+        gt_poses = data.loc[:, [i for i in range(12)]].values
+        y = []
+        for gt_idx, gt in enumerate(gt_poses):
+            pose = torch.eye(4)
+            pose[:3, :4] = torch.tensor(gt).view(3, 4)
+
+            if gt_idx > 0:
+                pose_wrt_prev = torch.linalg.inv(pose_prev) @ pose
+                R = pose_wrt_prev[:3, :3]
+                t = pose_wrt_prev[:3, 3]
+
+                # Euler angles
+                angles = torch.tensor(rotation_to_euler(R.numpy(), seq='zyx'))
+
+                # normalization
+                angles = (angles - torch.from_numpy(self.mean_angles)) / torch.from_numpy(self.std_angles)
+                t = (t - torch.from_numpy(self.mean_t)) / torch.from_numpy(self.std_t)
+
+                y.append(torch.cat((angles, t)))
+
+            pose_prev = pose
+
+        y = torch.cat(y).float()  # flatten [6*(window_size-1)]
+
+        return imgs, y
+        
+        """
         gt_poses = data.loc[:, [i for i in range(12)]].values
         y = []
         for gt_idx, gt in enumerate(gt_poses):
@@ -133,7 +178,8 @@ class KITTI(torch.utils.data.Dataset):
         y = y.flatten()
 
         return imgs, y
-
+        """
+        
     def read_intrinsics_param(self):
         """
         Reads camera intrinsics parameters
@@ -158,17 +204,29 @@ class KITTI(torch.utils.data.Dataset):
         # Get frames list
         frames = []
         seqs = []
+        
+        for sequence in self.sequences:
+            seq_dir = Path(self.data_path) / sequence / f"image_{self.camera_id}"
+            if not seq_dir.exists():
+                raise FileNotFoundError(f"Directory not found: {seq_dir}")
+
+            # Collect all image paths in sorted order
+            frames_seq = sorted(seq_dir.glob("*.jpg"))
+            frames_seq = [str(f) for f in frames_seq]  # convert to strings if needed
+
+            frames.extend(frames_seq)
+            seqs.extend([sequence] * len(frames_seq))
+
+        return frames, seqs
+        
+        """
         for sequence in self.sequences:
             frames_dir = os.path.join(self.data_path, sequence, "image_{}".format(self.camera_id), "*.jpg")
             frames_seq = sorted(glob.glob(frames_dir))
             frames = frames + frames_seq
             seqs = seqs + [sequence] * len(frames_seq)
         return frames, seqs
-    def read_gt(self)_
-
-"""
-KITTI 
-
+        """
     def read_gt(self):
         # Read ground truth
         if self.read_gt:
@@ -187,7 +245,7 @@ KITTI
             gt = None
 
         return gt
-"""
+
 
     def create_windowed_dataframe(self, df):
         df=pd.DataFrame(df)
@@ -237,7 +295,26 @@ if __name__ == "__main__":
     std_syn = np.std(timings)
     print("Mean pre-proc time: ", mean_syn)
     print("Std time: ", std_syn)
+"""
+# DirectML compatible timing, import time and replace 
+timings = np.zeros((len(test_loader), 1))
 
+for i in range(len(test_loader)):
+    start_time = time.perf_counter()
+
+    imgs, gt = data[i]
+
+    end_time = time.perf_counter()
+    curr_time = (end_time - start_time) * 1000  # convert to ms
+    timings[i] = curr_time
+
+mean_syn = np.mean(timings)
+std_syn = np.std(timings)
+
+print("Mean pre-proc time: {:.3f} ms".format(mean_syn))
+print("Std time: {:.3f} ms".format(std_syn))
+
+"""
 # idx = 500
 # imgs, gt = data[idx]
 # print("imgs.shape: ", imgs.shape)
