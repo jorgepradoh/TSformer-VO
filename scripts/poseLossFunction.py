@@ -1,3 +1,9 @@
+# PoseLoss: Custom loss function for 6-DoF pose estimation.
+# It combines:
+# - Translation loss: MSE between predicted and ground truth positions (x, y, z)
+# - Rotation loss: Geodesic distance (angular difference) between predicted and ground truth orientations, converted from Euler angles to quaternions
+# Both losses are weighted using learnable log-variance terms (log_sigma_t and log_sigma_r) to balance their contribution during training.
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
